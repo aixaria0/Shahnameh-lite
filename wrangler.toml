@@ -1,4 +1,0 @@
-name = "iran-proxy-relay"
-main = "src/index.js"
-compatibility_date = "2024-05-17"
-

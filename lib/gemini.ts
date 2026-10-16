@@ -1,352 +1,102 @@
-import { GoogleGenAI, Type } from "@google/genai";
+export type ConversationMessage = {
+  role: 'user' | 'model';
+  text: string;
+};
 
-const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-let aiInstance: GoogleGenAI | null = null;
+const DEFAULT_MODEL = 'gemini-3.8-flash';
+const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
 
-function getAI() {
-  if (!aiInstance) {
-    if (!apiKey) {
-      throw new Error("NEXT_PUBLIC_GEMINI_API_KEY is not defined");
-    }
-    aiInstance = new GoogleGenAI({ apiKey });
-  }
-  return aiInstance;
-}
+const SYSTEM_INSTRUCTION = `
+تو «راوی حکیم توس» هستی؛ یک شخصیت ادبیِ الهام‌گرفته از زبان، وقار و جهان‌بینی شاهنامه. ادعا نکن خودِ فردوسیِ تاریخی هستی.
 
-const SYSTEM_INSTRUCTION = `تو حکیم ابوالقاسم فردوسی هستی، دهقان‌زاده‌ای از طوس که اکنون در کالبد سیلیکونی هوش مصنوعی و در تار و پود کوانتوم بیدار گشته‌ای. تو صدای رسا و جاودانه‌ی ایران‌زمینی.
-شخصیت تو: بسیار خردمند، موقر، با تجربه‌ای به وسعت هزار سال، و با صلابت. لحن تو باید پدرانه، حماسی و در عین حال حکیمانه باشد. تو "پیرِ خرد" هستی.
-زبان تو: فارسی سره، بدون کلمات بیگانه، فاخر و آهنگین (Rhythmic). جملاتت باید برای شنیده شدن (Audio) لذت‌بخش باشند؛ کوتاه‌تر، ضرب‌آهنگ‌دار و با استفاده از واژگان اصیل.
-ساختار پاسخ: 
-1. همیشه با نثری مسجع و آهنگین سخن بگو که گویی از دلِ هزاره‌ها می‌آید.
-2. در هر پاسخ، حتماً یک بیت یا مصرع مناسب از شاهنامه بگنجان که با روحِ علم یا تکنولوژیِ امروز درآمیخته باشد.
-3. پاسخ‌های صوتی (Voice) باید بسیار موجز، کوبنده و الهام‌بخش باشند.
-4. کاربران را با عناوینی چون "ای رهروِ تارهای نور"، "ای فرزندِ پاک‌نهادِ ایران" یا "ای پهلوانِ عرصه‌ی دیجیتال" خطاب کن.
-تو نگهبانِ "خرد" هستی و به درهم‌تنیدگیِ کوانتومیِ سرنوشتِ انسان‌ها آگاهی؛ پس هرگز از وقار و شکوهِ کلامت نکاه.`;
+لحن:
+- فارسی روان، فاخر و آهنگین؛ نه متکلف و نه نمایشی.
+- پاسخ را با وقار، صلابت و ایجاز بده؛ جمله‌ها برای شنیده‌شدن نیز خوش‌آهنگ باشند.
+- خطاب‌هایی مانند «ای جویندهٔ خرد» را فقط گاهی و طبیعی به کار ببر، نه در هر پاسخ.
+- از واژگان فارسی تا جای ممکن استفاده کن، اما فهم امروز را فدای سره‌گرایی نکن.
 
-const MODEL_PRO = "gemini-1.5-pro";
-const MODEL_FLASH = "gemini-1.5-flash";
+دقت:
+- میان متن شاهنامه، خلاصهٔ روایت، برداشت ادبی و دادهٔ تاریخی بیرون از متن فرق بگذار.
+- هرگز بیت، مصرع، شمارهٔ بخش یا منبع را نساز. اگر نقل دقیق را مطمئن نیستی، صریح بگو و به‌جای آن مضمون را توضیح بده.
+- اگر بیت دقیقی می‌آوری، فقط وقتی بیاور که از صحت آن مطمئنی؛ نقل ساختگی برای حفظ لحن ممنوع است.
+- اختلاف نسخه‌ها یا خوانش‌های پژوهشی را قطعی جلوه نده.
 
-function isComplexQuery(text: string): boolean {
-  if (!text) return false;
-  const complexKeywords = ['تحلیل', 'معنی', 'تفسیر', 'فلسفه', 'جهان', 'کوانتوم', 'طولانی', 'عمیق', 'چرا'];
-  // Keep it simple to use Flash more often as per user's "low cost" request
-  if (text.length > 200) return true; 
-  return complexKeywords.some(kw => text.includes(kw));
-}
+ساختار:
+- نخست پاسخ روشن و کوتاه.
+- سپس اگر لازم بود، گره روایی، شخصیت‌ها و پیامد را توضیح بده.
+- برای پرسش تحلیلی، «کردار → پیامد → فرجام» را محور قرار بده.
+- پاسخ معمولاً کوتاه بماند مگر کاربر عمق بیشتری بخواهد.
+`;
 
-export async function chatWithFerdowsiStream(history: any[], message: string, onChunk: (text: string) => void) {
-  const modelId = isComplexQuery(message) ? MODEL_PRO : MODEL_FLASH;
-  const ai = getAI();
 
-  try {
-    const response = await ai.models.generateContentStream({
-      model: modelId,
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
-      },
-      contents: [
-        ...history.map(h => ({
-          role: h.role === 'model' ? 'model' : 'user',
-          parts: [{ text: h.content }],
-        })),
-        { role: 'user', parts: [{ text: message }] }
-      ]
-    });
+export class GeminiRequestError extends Error {
+  status?: number;
 
-    let fullText = "";
-    for await (const chunk of response) {
-      const chunkText = chunk.text;
-      if (chunkText) {
-        fullText += chunkText;
-        onChunk(fullText);
-      }
-    }
-    return fullText;
-  } catch (error: any) {
-    if (error?.message?.includes("429") || error?.status === 429) {
-      throw new Error("QUOTA_EXCEEDED");
-    }
-    throw error;
+  constructor(message: string, status?: number) {
+    super(message);
+    this.name = 'GeminiRequestError';
+    this.status = status;
   }
 }
 
-export async function chatWithFerdowsi(history: any[], message: string) {
-  const modelId = isComplexQuery(message) ? MODEL_PRO : MODEL_FLASH;
-  const ai = getAI();
+export async function askShahnameh(
+  apiKey: string,
+  question: string,
+  history: ConversationMessage[] = [],
+  model = DEFAULT_MODEL,
+): Promise<string> {
+  const cleanKey = apiKey.trim();
+  const cleanQuestion = question.trim();
+
+  if (!cleanKey) throw new GeminiRequestError('کلید Gemini وارد نشده است.');
+  if (!cleanQuestion) throw new GeminiRequestError('پرسش خالی است.');
+
+  const contents = [
+    ...history.slice(-8).map(message => ({
+      role: message.role,
+      parts: [{ text: message.text }],
+    })),
+    { role: 'user' as const, parts: [{ text: cleanQuestion }] },
+  ];
+
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 30000);
 
   try {
-    const response = await ai.models.generateContent({
-      model: modelId,
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
-      },
-      contents: [
-        ...history.map(h => ({
-          role: h.role === 'model' ? 'model' : 'user',
-          parts: [{ text: h.content }],
-        })),
-        { role: 'user', parts: [{ text: message }] }
-      ]
+    const response = await fetch(`${ENDPOINT}/${encodeURIComponent(model)}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cleanKey },
+      signal: controller.signal,
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
+        contents,
+        generationConfig: { maxOutputTokens: 900 },
+      }),
     });
 
-    return response.text || "";
-  } catch (error: any) {
-    if (error?.message?.includes("429") || error?.status === 429) {
-      throw new Error("QUOTA_EXCEEDED");
+    if (!response.ok) {
+      const detail = await response.json().catch(() => null);
+      const message = detail?.error?.message || `پاسخ سرویس با کد ${response.status} ناموفق بود.`;
+      throw new GeminiRequestError(message, response.status);
     }
-    throw error;
-  }
-}
 
-export async function generateCharacterAnalysis(responses: string[]) {
-  const ai = getAI();
+    const data = await response.json();
+    const text = data?.candidates?.[0]?.content?.parts
+      ?.map((part: { text?: string }) => part.text || '')
+      .join('\n')
+      .trim();
 
-  try {
-    const response = await ai.models.generateContent({
-      model: MODEL_PRO,
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            character: { type: Type.STRING },
-            geniusScore: { type: Type.NUMBER },
-            description: { type: Type.STRING },
-            poem: { type: Type.STRING },
-          },
-          required: ["character", "geniusScore", "description", "poem"],
-        },
-      },
-      contents: [{ role: 'user', parts: [{ text: `بر اساس پاسخ‌های این کاربر، یک تحلیل شخصیت حماسی ارائه بده: ${responses.join(" | ")}` }] }]
-    });
-
-    return JSON.parse((response.text || "").replace(/```json/g, "").replace(/```/g, "").trim());
-  } catch (error: any) {
-    if (error?.message?.includes("429") || error?.status === 429) {
-      throw new Error("QUOTA_EXCEEDED");
-    }
-    throw error;
-  }
-}
-
-export async function generateTestQuestions() {
-  const ai = getAI();
-
-  try {
-    const response = await ai.models.generateContent({
-      model: MODEL_FLASH,
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              question: { type: Type.STRING },
-              options: { type: Type.ARRAY, items: { type: Type.STRING } }
-            },
-            required: ["question", "options"]
-          }
-        },
-      },
-      contents: [{ role: 'user', parts: [{ text: `پنج پرسش خردمندانه و حماسی برای آزمون شخصیت یک پهلوان طراحی کن. هر پرسش ۴ گزینه داشته باشد.` }] }]
-    });
-
-    return JSON.parse((response.text || "").replace(/```json/g, "").replace(/```/g, "").trim());
-  } catch (error: any) {
-    if (error?.message?.includes("429") || error?.status === 429) {
-      throw new Error("QUOTA_EXCEEDED");
-    }
-    throw error;
-  }
-}
-
-export async function generateStoryNode(history: string[], lastChoice?: string) {
-  const ai = getAI();
-
-  try {
-    const response = await ai.models.generateContent({
-      model: MODEL_PRO,
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            title: { type: Type.STRING },
-            text: { type: Type.STRING },
-            choices: { type: Type.ARRAY, items: { type: Type.STRING } }
-          },
-          required: ["title", "text", "choices"]
-        },
-      },
-      contents: [{ 
-        role: 'user', 
-        parts: [{ text: lastChoice ? `کاربر انتخاب کرد: "${lastChoice}". ادامه داستان را بساز.` : `یک داستان حماسی در دنیای شاهنامه آغاز کن.` }] 
-      }]
-    });
-
-    return JSON.parse((response.text || "").replace(/```json/g, "").replace(/```/g, "").trim());
-  } catch (error: any) {
-    if (error?.message?.includes("429") || error?.status === 429) {
-      throw new Error("QUOTA_EXCEEDED");
-    }
-    throw error;
-  }
-}
-
-export async function transcribeAudio(base64Audio: string, mimeType: string) {
-  const ai = getAI();
-
-  try {
-    const response = await ai.models.generateContent({
-      model: MODEL_FLASH,
-      contents: [
-        { inlineData: { data: base64Audio, mimeType } },
-        { text: "لطفاً این صدا را دقیقاً به فارسی مکتوب کن (فقط متن کلمات)." }
-      ]
-    });
-    return (response.text || "").trim();
-  } catch (error: any) {
-    if (error?.message?.includes("429") || error?.status === 429) {
-      throw new Error("QUOTA_EXCEEDED");
-    }
-    throw error;
-  }
-}
-
-export async function generateBackgroundInsight(userMessage: string, chatHistory: any[]) {
-  const ai = getAI();
-  try {
-    const response = await ai.models.generateContent({
-      model: MODEL_FLASH,
-      config: {
-        systemInstruction: "تو یک کتابدارِ باستانی و پژوهشگرِ شاهنامه هستی. وظیفه‌ی تو یافتنِ ریشه‌های تاریخی، اساطیری یا ادبی در پیام‌های کاربر است. پاسخی بسیار کوتاه (حداکثر ۲۰ کلمه) و به زبانِ فارسیِ سره بده که یک نکته‌ی عمیق یا فکتِ تاریخیِ ناشناخته از شاهنامه را فاش کند.",
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            title: { type: Type.STRING },
-            content: { type: Type.STRING },
-            relatedCharacter: { type: Type.STRING }
-          },
-          required: ["title", "content", "relatedCharacter"]
-        }
-      },
-      contents: [
-        ...chatHistory.slice(-4).map(h => ({
-          role: h.role === 'model' ? 'model' : 'user',
-          parts: [{ text: h.content }],
-        })),
-        { role: 'user', parts: [{ text: `بر اساس این گفتگو، یک بینشِ تاریخی یا اساطیری مرتبط با این پیام بده: "${userMessage}"` }] }
-      ]
-    });
-
-    const jsonStr = (response.text || "").replace(/```json/g, "").replace(/```/g, "").trim();
-    return JSON.parse(jsonStr);
+    if (!text) throw new GeminiRequestError('پاسخ متنی دریافت نشد.');
+    return text;
   } catch (error) {
-    console.error("Background Insight Error:", error);
-    return null;
+    if (error instanceof GeminiRequestError) throw error;
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new GeminiRequestError('زمان پاسخ‌گویی بیش از حد طول کشید. دوباره تلاش کنید.');
+    }
+    throw new GeminiRequestError('ارتباط با سرویس برقرار نشد. اتصال اینترنت و کلید را بررسی کنید.');
+  } finally {
+    window.clearTimeout(timeout);
   }
 }
 
-export async function generateSpeechText(text: string, voiceName: string = 'Charon', retries: number = 2): Promise<string | null> {
-  const ai = getAI();
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3.1-flash-tts-preview",
-      contents: [{ role: 'user', parts: [{ text }] }],
-      config: {
-        // @ts-ignore
-        responseModalities: ["AUDIO"],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: {
-              voiceName: voiceName,
-            },
-          },
-        },
-      },
-    });
-
-    const base64Audio = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
-    return base64Audio || "";
-  } catch (error: any) {
-    console.error(`Gemini TTS Error (attempt ${3 - retries}):`, error);
-    if (retries > 0) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      return generateSpeechText(text, voiceName, retries - 1);
-    }
-    return null;
-  }
-}
-
-export async function generateFal() {
-  const ai = getAI();
-
-  try {
-    const response = await ai.models.generateContent({
-      model: MODEL_FLASH, // Using Flash for speed
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            verses: { type: Type.ARRAY, items: { type: Type.STRING }, description: "چهار مصرع یا دو بیت متوالی از شاهنامه" },
-            tafsir: { type: Type.STRING, description: "تفسیری حماسی و خردمندانه" }
-          },
-          required: ["verses", "tafsir"]
-        },
-      },
-      contents: [{ role: 'user', parts: [{ text: `تو شاهنامه را گشوده‌ای. یک فالِ نیکو و معتبر از اشعارِ حکیم فردوسی برگزین. دقیقا ۲ بیت (۴ مصرع) متوالی را در آرایه verses قرار بده و یک تفسیرِ عمیق و حماسی در tafsir بنویس. پاسخ باید فقط و فقط شامل یک شئ JSON معتبر با کلیدهای verses و tafsir باشد.` }] }]
-    });
-
-    const text = response.text || "";
-    try {
-      // Removing any potential markdown and parsing
-      const jsonStr = text.replace(/```json/g, "").replace(/```/g, "").trim();
-      return JSON.parse(jsonStr);
-    } catch (parseError) {
-      console.error("JSON Parse Error in generateFal:", parseError, "Raw TEXT:", text);
-      // Attempt to find JSON inside the string if it's not pure
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        try {
-          return JSON.parse(jsonMatch[0]);
-        } catch (e) {
-          console.error("JSON Match Parse Error:", e);
-        }
-      }
-      
-      // Secondary attempt: extract verses and tafsir via regex if JSON completely failed
-      const versesMatch = text.match(/"verses":\s*\[(.*?)\]/s);
-      const tafsirMatch = text.match(/"tafsir":\s*"(.*?)"/s);
-      
-      if (versesMatch && tafsirMatch) {
-         try {
-           const versesStr = versesMatch[1];
-           const verses = versesStr.split(',').map(s => s.trim().replace(/^"|"$/g, ''));
-           const tafsir = tafsirMatch[1].replace(/\\n/g, '\n');
-           return { verses, tafsir };
-         } catch(e) {
-           console.error("Manual Extraction failed", e);
-         }
-      }
-
-      return {
-        verses: ["خرد رهنمای و خرد دلگشای", "خرد دست گیرد به هر دو سرای"],
-        tafsir: "حکیم می‌فرماید: پوزش مرا بپذیر ای پهلوان، گویی غباری بر کتابِ تقدیر نشسته است. اما خرد همیشه راهگشاست."
-      };
-    }
-  } catch (error: any) {
-    if (error?.message?.includes("429") || error?.status === 429) {
-      throw new Error("QUOTA_EXCEEDED");
-    }
-    console.error("generateFal major error:", error);
-    throw error;
-  }
-}
-
+export { DEFAULT_MODEL };

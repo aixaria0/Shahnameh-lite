@@ -1,46 +1,44 @@
-import type { Metadata } from 'next';
-import { Noto_Nastaliq_Urdu, Inter, Amiri } from 'next/font/google';
+import type { Metadata, Viewport } from 'next';
+import localFont from 'next/font/local';
 import './globals.css';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
 
-const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
-const notoNastaliq = Noto_Nastaliq_Urdu({ 
-  subsets: ['arabic'], 
-  weight: ['400', '700'],
-  variable: '--font-nastaliq' 
-});
-const amiri = Amiri({
-  subsets: ['arabic'],
-  weight: ['400', '700'],
-  variable: '--font-amiri'
+const vazirmatn = localFont({
+  src: '../public/fonts/Vazirmatn.woff2',
+  variable: '--font-vazirmatn',
+  display: 'swap',
+  weight: '100 900',
 });
 
-export const viewport = {
-  themeColor: '#09170e',
+export const viewport: Viewport = {
+  themeColor: '#090b09',
+  colorScheme: 'dark',
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
 };
 
 export const metadata: Metadata = {
-  title: 'رزونِنس شاهنامه | Resonance Shahnameh',
-  description: 'تجربه‌ای عمیق و شخصی با حکیم ابوالقاسم فردوسی در دنیای شاهنامه',
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: 'black-translucent',
-    title: 'شاهنامه',
+  metadataBase: new URL('https://sunaria.si'),
+  title: 'شاهنامه — خوانش، روایت، خرد',
+  description: 'یک نسخهٔ مدرن و فارسی برای ورود به روایت‌ها، چهره‌ها، درون‌مایه‌ها و واژه‌های شاهنامهٔ فردوسی.',
+  applicationName: 'شاهنامه',
+  keywords: ['شاهنامه', 'فردوسی', 'رستم', 'سیاوش', 'ادبیات فارسی', 'حماسهٔ ایرانی'],
+  authors: [{ name: 'Sunaria' }],
+  alternates: { canonical: '/shahnameh-lite/' },
+  openGraph: {
+    title: 'شاهنامه — یک کتاب هزارساله، زنده در دست تو',
+    description: 'روایت‌ها، چهره‌ها، واژه‌ها و پرسش‌های بزرگ شاهنامه در یک تجربهٔ خواندنی و مدرن.',
+    type: 'website',
+    locale: 'fa_IR',
+    url: '/shahnameh-lite/',
   },
+  twitter: {
+    card: 'summary',
+    title: 'شاهنامه — خوانش، روایت، خرد',
+    description: 'یک تجربهٔ مدرن فارسی برای ورود به جهان شاهنامه.',
+  },
+  robots: { index: true, follow: true },
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <html lang="fa" dir="rtl" className={`${inter.variable} ${notoNastaliq.variable} ${amiri.variable}`}>
-      <body className="antialiased selection:bg-royal-gold/30 selection:text-royal-gold">
-        <ErrorBoundary>
-          {children}
-        </ErrorBoundary>
-      </body>
-    </html>
-  );
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  return <html lang="fa" dir="rtl" className={vazirmatn.variable}><body>{children}</body></html>;
 }
