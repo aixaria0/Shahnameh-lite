@@ -46,3 +46,11 @@ npm run publish:pages
 ## مرز محتوا
 
 این پروژه یک راهنمای ورود و مرور است، نه نسخهٔ انتقادی شاهنامه. برای نقل دقیق ابیات، شماره‌گذاری بخش‌ها و اختلاف نسخه‌ها باید به تصحیح معتبر چاپی مراجعه کرد.
+
+## Licensing
+
+Application source: [MIT](LICENSE).
+
+The bundled Vazirmatn font is licensed separately under
+[SIL OFL-1.1](public/fonts/OFL.txt). See
+[Third-party notices](THIRD_PARTY_NOTICES.md).
